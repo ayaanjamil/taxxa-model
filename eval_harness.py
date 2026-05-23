@@ -18,7 +18,7 @@ from openai import OpenAI
 
 QUESTION_BANK = "question_bank.json"
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-JUDGE_MODEL = "anthropic/claude-haiku-4-5"  # cheap judge
+JUDGE_MODEL = os.getenv("TAXXA_JUDGE_MODEL", "anthropic/claude-haiku-4-5")  # cheap judge
 
 
 def load_questions(tier: str | None = None) -> list[dict]:

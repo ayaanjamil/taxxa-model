@@ -16,9 +16,9 @@ from openai import OpenAI
 from retriever import format_nodes, retrieve, retrieve_with_graph
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-ANSWER_MODEL = "anthropic/claude-haiku-4-5"
-PLANNER_MODEL = "anthropic/claude-haiku-4-5"
-WEB_FALLBACK_MODEL = "perplexity/sonar"  # search + synthesis in one call
+ANSWER_MODEL = os.getenv("TAXXA_ANSWER_MODEL", "anthropic/claude-haiku-4-5")
+PLANNER_MODEL = os.getenv("TAXXA_PLANNER_MODEL", "anthropic/claude-haiku-4-5")
+WEB_FALLBACK_MODEL = os.getenv("TAXXA_WEB_MODEL", "perplexity/sonar")  # search + synthesis in one call
 
 # Substrings that signal the corpus didn't contain the answer.
 # Match against the lowercased answer; keep these short and unambiguous.

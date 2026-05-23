@@ -1,4 +1,4 @@
-.env
+.env*
 /graphRAG
 /data
 /finland_kb
