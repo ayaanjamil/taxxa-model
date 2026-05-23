@@ -1,0 +1,6 @@
+.env
+/graphRAG
+/data
+/finland_kb
+
+__pycache__

@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Taxxa — Finnish Tax Law Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           oklch(11.5% 0.012 272);
+  --sidebar-bg:   oklch(13.5% 0.013 272);
+  --bg-raised:    oklch(16% 0.014 272);
+  --bg-hover:     oklch(19% 0.016 272);
+  --border:       oklch(22% 0.018 272);
+  --border-faint: oklch(17.5% 0.013 272);
+  --text:         oklch(90% 0.006 272);
+  --text-2:       oklch(58% 0.012 272);
+  --text-3:       oklch(38% 0.010 272);
+  --accent:       oklch(64% 0.18 282);
+  --accent-dim:   oklch(64% 0.18 282 / 0.14);
+  --accent-text:  oklch(78% 0.14 282);
+  --blue:         oklch(62% 0.16 248);
+  --blue-dim:     oklch(62% 0.16 248 / 0.16);
+  --green:        oklch(63% 0.14 148);
+  --green-dim:    oklch(63% 0.14 148 / 0.16);
+  --orange:       oklch(68% 0.15 52);
+  --orange-dim:   oklch(68% 0.15 52 / 0.16);
+  --amber:        oklch(72% 0.16 72);
+  --amber-dim:    oklch(72% 0.16 72 / 0.16);
+  --red:          oklch(60% 0.18 22);
+  --red-dim:      oklch(60% 0.18 22 / 0.16);
+  --muted:        oklch(30% 0.008 272);
+  --muted-dim:    oklch(30% 0.008 272 / 0.25);
+  --sidebar-w:    218px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+/* ── App shell ─────────────────────────────────────────────── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ───────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border-faint);
+  overflow: hidden;
+}
+
+/* Sidebar top bar */
+.sb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  height: 48px;
+  border-bottom: 1px solid var(--border-faint);
+  flex-shrink: 0;
+}
+
+.sb-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sb-logo-mark {
+  width: 22px; height: 22px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 500;
+  color: oklch(98% 0.004 272);
+  flex-shrink: 0;
+}
+
+.sb-top-actions { display: flex; gap: 1px; }
+
+.sb-icon-btn {
+  width: 26px; height: 26px;
+  border-radius: 5px;
+  border: none; background: none;
+  color: var(--text-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, color 0.12s;
+  font-family: inherit;
+}
+.sb-icon-btn:hover { background: var(--bg-hover); color: var(--text-2); }
+
+/* Sidebar scroll area */
+.sb-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding-bottom: 8px;
+}
+.sb-scroll::-webkit-scrollbar { display: none; }
+
+/* Section */
+.sb-section { margin-top: 4px; }
+
+.sb-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 8px 4px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.sb-section-header:hover .sb-section-label { color: var(--text-2); }
+
+.sb-section-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  transition: color 0.1s;
+}
+
+.sb-chevron {
+  color: var(--text-3);
+  transition: transform 0.15s, color 0.1s;
+  flex-shrink: 0;
+}
+.sb-section.collapsed .sb-chevron { transform: rotate(-90deg); }
+.sb-section.collapsed .sb-body { display: none; }
+
+/* Nav items (Recent queries, corpus items) */
+.sb-item {
+  display: flex; align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 5px;
+  margin: 0 4px;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 400;
+  transition: background 0.1s, color 0.1s;
+  position: relative;
+  min-width: 0;
+}
+.sb-item:hover { background: var(--bg-hover); color: var(--text); }
+.sb-item.active {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.sb-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 3px; bottom: 3px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.sb-item-icon { color: var(--text-3); flex-shrink: 0; display: flex; }
+.sb-item.active .sb-item-icon { color: var(--text-2); }
+.sb-item:hover .sb-item-icon { color: var(--text-2); }
+
+.sb-item-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.sb-item-badge {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.sb-item-time {
+  font-size: 10px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+/* Tree (corpus) */
+.sb-tree-group { margin: 2px 0; }
+
+.sb-tree-parent {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 5px;
+  margin: 0 4px;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+.sb-tree-parent:hover { background: var(--bg-hover); color: var(--text); }
+
+.sb-tree-chevron { color: var(--text-3); transition: transform 0.15s; flex-shrink: 0; }
+.sb-tree-group.open .sb-tree-chevron { transform: rotate(90deg); }
+.sb-tree-group:not(.open) .sb-tree-children { display: none; }
+
+.sb-tree-children { padding-left: 8px; }
+
+.sb-tree-child {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px 3px 20px;
+  border-radius: 4px;
+  margin: 0 4px;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 11.5px;
+  transition: background 0.1s, color 0.1s;
+}
+.sb-tree-child:hover { background: var(--bg-hover); color: var(--text-2); }
+
+.sb-tree-dot {
+  width: 5px; height: 5px;
+  border-radius: 1.5px;
+  flex-shrink: 0;
+}
+
+/* Eval bars */
+.sb-eval { padding: 4px 10px 4px; }
+
+.sb-eval-row {
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.sb-eval-label {
+  font-size: 11.5px;
+  color: var(--text-2);
+  width: 46px;
+  flex-shrink: 0;
+}
+
+.sb-eval-bar-wrap {
+  flex: 1;
+  height: 3px;
+  background: var(--border-faint);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.sb-eval-bar {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sb-eval-pct {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.sb-eval-meta {
+  font-size: 10.5px;
+  color: var(--text-3);
+  padding: 2px 0 6px;
+  line-height: 1.4;
+}
+
+/* Divider */
+.sb-divider { height: 1px; background: var(--border-faint); margin: 6px 10px; }
+
+/* Sidebar bottom */
+.sb-bottom {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-faint);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-status-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.sb-status-text { font-size: 11px; color: var(--text-3); }
+.sb-status-url { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-3); }
+
+/* ── Main area (right of sidebar) ──────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Search / query bar */
+.query-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-faint);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.query-wrap { flex: 1; position: relative; display: flex; align-items: center; }
+
+.query-icon {
+  position: absolute; left: 10px;
+  color: var(--text-3); pointer-events: none; display: flex;
+}
+
+#question-input {
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-faint);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 400;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+#question-input::placeholder { color: var(--text-3); }
+#question-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2.5px var(--accent-dim); }
+
+.ask-btn {
+  padding: 7px 14px;
+  background: var(--accent);
+  color: oklch(98% 0.004 272);
+  border: none; border-radius: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.1s;
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.ask-btn:hover { opacity: 0.86; }
+.ask-btn:active { transform: scale(0.97); }
+.ask-btn.loading { opacity: 0.6; pointer-events: none; }
+.spinner { width: 12px; height: 12px; border: 1.5px solid oklch(98% 0.004 272 / 0.3); border-top-color: oklch(98% 0.004 272); border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+.ask-btn.loading .spinner { display: block; }
+.ask-btn.loading .btn-text { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tab strip */
+.tab-strip {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-faint);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.tab {
+  padding: 7px 12px 8px;
+  font-size: 12.5px; color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s, border-color 0.12s;
+  background: none; border-top: none; border-left: none; border-right: none;
+  font-family: inherit; white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.tab-right {
+  margin-left: auto;
+  display: flex; align-items: center;
+  gap: 5px;
+  font-size: 11px; color: var(--text-3);
+  padding-bottom: 1px;
+}
+.status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+/* ── Workspace (graph + answer) ───────────────────────────── */
+.workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Graph panel ──────────────────────────────────────────── */
+.graph-panel {
+  width: 52%;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border-faint);
+  overflow: hidden;
+  position: relative;
+}
+
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 7px;
+  border-bottom: 1px solid var(--border-faint);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.graph-controls { display: flex; gap: 3px; }
+
+.icon-btn {
+  width: 24px; height: 24px;
+  border-radius: 4px; border: 1px solid var(--border-faint);
+  background: none; color: var(--text-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  font-family: inherit;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-2); border-color: var(--border); }
+
+#cy { flex: 1; background: var(--bg); }
+
+.graph-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; pointer-events: none;
+  color: var(--text-3); font-size: 12px; text-align: center;
+}
+.graph-empty svg { opacity: 0.25; margin-bottom: 4px; }
+
+.graph-legend {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-faint);
+  flex-shrink: 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-3); }
+.legend-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.legend-dot.finlex  { background: var(--blue); }
+.legend-dot.vh      { background: var(--green); }
+.legend-dot.court   { background: var(--orange); }
+.legend-dot.repealed { background: var(--muted); }
+
+/* Resize handle */
+.resize-handle {
+  width: 1px; background: var(--border-faint);
+  cursor: col-resize; flex-shrink: 0; position: relative;
+  transition: background 0.1s;
+}
+.resize-handle::after { content:''; position: absolute; top:0; bottom:0; left:-3px; right:-3px; }
+.resize-handle:hover { background: var(--accent); }
+
+/* ── Answer panel ─────────────────────────────────────────── */
+.answer-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.answer-scroll {
+  flex: 1; overflow-y: auto;
+  padding: 14px 16px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.answer-scroll::-webkit-scrollbar { width: 3px; }
+.answer-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: 8px; padding: 24px; text-align: center;
+}
+.empty-icon { width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-3); margin-bottom: 2px; }
+.empty-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.empty-body { font-size: 11.5px; color: var(--text-3); max-width: 200px; line-height: 1.65; }
+
+.example-qs { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; width: 100%; max-width: 260px; }
+.example-q {
+  padding: 6px 10px; background: var(--bg-raised); border: 1px solid var(--border-faint);
+  border-radius: 5px; font-size: 11.5px; color: var(--text-2); cursor: pointer;
+  text-align: left; font-family: inherit;
+  transition: background 0.1s, border-color 0.1s, color 0.1s; line-height: 1.4;
+}
+.example-q:hover { background: var(--bg-hover); border-color: var(--border); color: var(--text); }
+
+/* Loading skeleton */
+.loading-state { display: none; }
+.loading-state.visible { display: block; }
+.skeleton-line { height: 11px; border-radius: 4px; margin-bottom: 7px; background-image: linear-gradient(90deg, var(--bg-raised) 0%, var(--bg-hover) 50%, var(--bg-raised) 100%); background-size: 200% 100%; animation: shimmer 1.3s ease infinite; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton-line.w-full { width: 100%; }
+.skeleton-line.w-80   { width: 80%; }
+.skeleton-line.w-60   { width: 60%; }
+.skeleton-line.w-90   { width: 90%; }
+
+/* Answer content */
+.answer-content { display: none; }
+.answer-content.visible { display: block; }
+
+.answer-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.hops-badge { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+.hops-badge span { color: var(--accent-text); font-weight: 500; }
+
+.answer-text { font-size: 13px; line-height: 1.78; color: var(--text); font-weight: 300; }
+.answer-text p { margin-bottom: 9px; }
+.answer-text p:last-child { margin-bottom: 0; }
+
+.cite {
+  display: inline-flex; align-items: center;
+  padding: 1px 5px; background: var(--accent-dim); color: var(--accent-text);
+  border-radius: 3px; font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px; font-weight: 500; cursor: default;
+  transition: background 0.1s; white-space: nowrap;
+}
+.cite:hover { background: oklch(64% 0.18 282 / 0.26); }
+
+.divider { height: 1px; background: var(--border-faint); margin: 14px 0; }
+
+.sources-heading { font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+
+.sources-list { display: flex; flex-direction: column; gap: 3px; }
+
+.source-item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 9px; border-radius: 5px; border: 1px solid var(--border-faint);
+  background: var(--bg-raised); transition: background 0.1s, border-color 0.1s; cursor: default;
+}
+.source-item:hover { background: var(--bg-hover); border-color: var(--border); }
+
+.source-type-dot { width: 5px; height: 5px; border-radius: 1.5px; flex-shrink: 0; }
+.source-type-dot.finlex   { background: var(--blue); }
+.source-type-dot.vh       { background: var(--green); }
+.source-type-dot.court    { background: var(--orange); }
+.source-type-dot.repealed { background: var(--muted); }
+
+.source-id { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--text); font-weight: 500; white-space: nowrap; }
+.source-label { font-size: 11.5px; color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-tag { font-size: 9.5px; font-weight: 500; padding: 1.5px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.04em; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+.source-tag.statute  { background: var(--blue-dim);   color: var(--blue); }
+.source-tag.guidance { background: var(--green-dim);  color: var(--green); }
+.source-tag.court    { background: var(--orange-dim); color: var(--orange); }
+.source-tag.repealed { background: var(--muted-dim);  color: var(--text-3); }
+
+/* ── Tooltip ──────────────────────────────────────────────── */
+.cy-tooltip {
+  position: fixed; z-index: 1000; pointer-events: none;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px;
+  font-size: 11.5px; color: var(--text); max-width: 190px;
+  box-shadow: 0 4px 18px oklch(0% 0 0 / 0.45);
+  opacity: 0; transition: opacity 0.1s; line-height: 1.5;
+}
+.cy-tooltip.visible { opacity: 1; }
+.cy-tooltip strong { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 500; display: block; margin-bottom: 2px; }
+.cy-tooltip .tt-type { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); margin-bottom: 3px; display: block; }
+.cy-tooltip .tt-rel { font-size: 11px; color: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sb-top">
+      <div class="sb-logo">
+        <div class="sb-logo-mark">tx</div>
+        Taxxa
+      </div>
+      <div class="sb-top-actions">
+        <button class="sb-icon-btn" title="GitHub">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        </button>
+        <button class="sb-icon-btn" title="Settings">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="sb-scroll">
+
+      <!-- Recent queries -->
+      <div class="sb-section" id="section-recent">
+        <div class="sb-section-header" onclick="toggleSection('recent')">
+          <span class="sb-section-label">Recent</span>
+          <svg class="sb-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="sb-body" id="recent-body">
+          <div class="sb-item active" onclick="loadRecent(this, 'What withholding tax rate applies to a foreign specialist with key-personnel status, and how long is the tax card valid?')">
+            <span class="sb-item-icon"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+            <span class="sb-item-text">Key-personnel withholding rate…</span>
+            <span class="sb-item-time">now</span>
+          </div>
+          <div class="sb-item" onclick="loadRecent(this, 'Mikä on pääomatuloveron enimmäisprosentti 2024?')">
+            <span class="sb-item-icon"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+            <span class="sb-item-text">Pääomatulovero 2024?</span>
+            <span class="sb-item-time">2m</span>
+          </div>
+          <div class="sb-item" onclick="loadRecent(this, 'Miten ALV käsitellään rakennusurakassa?')">
+            <span class="sb-item-icon"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+            <span class="sb-item-text">ALV rakennusurakassa</span>
+            <span class="sb-item-time">8m</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb-divider"></div>
+
+      <!-- Corpus browser -->
+      <div class="sb-section" id="section-corpus">
+        <div class="sb-section-header" onclick="toggleSection('corpus')">
+          <span class="sb-section-label">Corpus</span>
+          <svg class="sb-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="sb-body">
+
+          <!-- Statutes -->
+          <div class="sb-tree-group open" id="tg-statutes">
+            <div class="sb-tree-parent" onclick="toggleTree('tg-statutes')">
+              <svg class="sb-tree-chevron" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+              <span class="sb-item-icon" style="color:var(--blue)"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+              <span style="flex:1">Statutes</span>
+              <span class="sb-item-badge">4</span>
+            </div>
+            <div class="sb-tree-children">
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--blue)"></div>AVL<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">§§ 1–246</span></div>
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--blue)"></div>TVL<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">§§ 1–141</span></div>
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--blue)"></div>EPL<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">§§ 1–22</span></div>
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--blue)"></div>KVL<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">§§ 1–68</span></div>
+            </div>
+          </div>
+
+          <!-- Verohallinto -->
+          <div class="sb-tree-group" id="tg-vero">
+            <div class="sb-tree-parent" onclick="toggleTree('tg-vero')">
+              <svg class="sb-tree-chevron" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+              <span class="sb-item-icon" style="color:var(--green)"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+              <span style="flex:1">Verohallinto</span>
+              <span class="sb-item-badge">47</span>
+            </div>
+            <div class="sb-tree-children">
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--green)"></div>Ohjeet 2024<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">31</span></div>
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--green)"></div>Ohjeet 2023<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">16</span></div>
+            </div>
+          </div>
+
+          <!-- Court -->
+          <div class="sb-tree-group" id="tg-court">
+            <div class="sb-tree-parent" onclick="toggleTree('tg-court')">
+              <svg class="sb-tree-chevron" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+              <span class="sb-item-icon" style="color:var(--orange)"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+              <span style="flex:1">Court rulings</span>
+              <span class="sb-item-badge">18</span>
+            </div>
+            <div class="sb-tree-children">
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--orange)"></div>KHO<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">12</span></div>
+              <div class="sb-tree-child"><div class="sb-tree-dot" style="background:var(--orange)"></div>KKO<span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">6</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sb-divider"></div>
+
+      <!-- Eval scores -->
+      <div class="sb-section" id="section-eval">
+        <div class="sb-section-header" onclick="toggleSection('eval')">
+          <span class="sb-section-label">Eval</span>
+          <svg class="sb-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="sb-body">
+          <div class="sb-eval">
+            <div class="sb-eval-row">
+              <span class="sb-eval-label">Basic</span>
+              <div class="sb-eval-bar-wrap"><div class="sb-eval-bar" style="width:61%;background:var(--green)"></div></div>
+              <span class="sb-eval-pct" style="color:var(--green)">61%</span>
+            </div>
+            <div class="sb-eval-row">
+              <span class="sb-eval-label">Medium</span>
+              <div class="sb-eval-bar-wrap"><div class="sb-eval-bar" style="width:38%;background:var(--amber)"></div></div>
+              <span class="sb-eval-pct" style="color:var(--amber)">38%</span>
+            </div>
+            <div class="sb-eval-row">
+              <span class="sb-eval-label">Hard</span>
+              <div class="sb-eval-bar-wrap"><div class="sb-eval-bar" style="width:22%;background:var(--red)"></div></div>
+              <span class="sb-eval-pct" style="color:var(--red)">22%</span>
+            </div>
+            <div class="sb-eval-meta">83 QA pairs · last run 14:32</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /sb-scroll -->
+
+    <div class="sb-bottom">
+      <div class="sb-status-dot"></div>
+      <div>
+        <div class="sb-status-text">FastAPI</div>
+        <div class="sb-status-url">localhost:8000</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <!-- Query bar -->
+    <div class="query-bar">
+      <div class="query-wrap">
+        <span class="query-icon">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </span>
+        <input id="question-input" type="text" placeholder="Ask a Finnish tax law question…"
+          value="What withholding tax rate applies to a foreign specialist with key-personnel status, and how long is the tax card valid?"/>
+      </div>
+      <button class="ask-btn" id="ask-btn" onclick="runQuery()">
+        <span class="btn-text">Ask</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+
+    <!-- Tab strip -->
+    <div class="tab-strip">
+      <button class="tab active">Traversal</button>
+      <button class="tab">All nodes</button>
+      <button class="tab">Amendments</button>
+      <div class="tab-right">
+        <div class="status-dot"></div>
+        3 nodes retrieved · 4 hops
+      </div>
+    </div>
+
+    <!-- Graph + Answer split -->
+    <div class="workspace">
+
+      <!-- Graph -->
+      <div class="graph-panel" id="graph-panel">
+        <div class="panel-header">
+          <span class="panel-title">Traversal graph</span>
+          <div class="graph-controls">
+            <button class="icon-btn" onclick="fitGraph()" title="Fit to view">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </button>
+            <button class="icon-btn" title="Export">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="cy"></div>
+
+        <div class="graph-empty" id="graph-empty">
+          <svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          Ask a question to see the traversal graph
+        </div>
+
+        <div class="graph-legend">
+          <div class="legend-item"><div class="legend-dot finlex"></div>Finlex statute</div>
+          <div class="legend-item"><div class="legend-dot vh"></div>Verohallinto</div>
+          <div class="legend-item"><div class="legend-dot court"></div>Court ruling</div>
+          <div class="legend-item"><div class="legend-dot repealed"></div>Superseded</div>
+        </div>
+      </div>
+
+      <div class="resize-handle" id="resize-handle"></div>
+
+      <!-- Answer -->
+      <div class="answer-panel">
+        <div class="panel-header">
+          <span class="panel-title">Answer</span>
+        </div>
+        <div class="answer-scroll">
+
+          <!-- Empty -->
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <div class="empty-title">No answer yet</div>
+            <div class="empty-body">Ask a question and the system will traverse the statute graph to find the answer.</div>
+            <div class="example-qs">
+              <button class="example-q" onclick="useExample(this)">Mikä on pääomatuloveron enimmäisprosentti 2024?</button>
+              <button class="example-q" onclick="useExample(this)">Kuinka kauan avainhenkilön verokortti on voimassa?</button>
+              <button class="example-q" onclick="useExample(this)">Miten ALV käsitellään rakennusurakassa?</button>
+            </div>
+          </div>
+
+          <!-- Loading -->
+          <div class="loading-state" id="loading-state">
+            <div class="skeleton-line w-full" style="height:13px;margin-bottom:14px"></div>
+            <div class="skeleton-line w-90"></div>
+            <div class="skeleton-line w-full"></div>
+            <div class="skeleton-line w-80"></div>
+            <div class="skeleton-line w-full"></div>
+            <div class="skeleton-line w-60" style="margin-bottom:20px"></div>
+            <div class="skeleton-line w-90"></div>
+            <div class="skeleton-line w-full"></div>
+            <div class="skeleton-line w-75"></div>
+          </div>
+
+          <!-- Answer -->
+          <div class="answer-content" id="answer-content">
+            <div class="answer-meta">
+              <div class="hops-badge">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <span>4</span> hops · <span>6</span> nodes · <span>1.3s</span>
+              </div>
+            </div>
+
+            <div class="answer-text">
+              <p>Foreign specialists qualifying for key-personnel status under <span class="cite">§13 EPL</span> are subject to a flat source-tax withholding rate of <strong>32%</strong> on earned income, replacing the progressive schedule that would otherwise apply.</p>
+              <p>The tax card is valid for a maximum of <strong>48 months</strong> from the start of Finnish employment <span class="cite">§14a EPL</span>. This was extended by the 2022 reform from the prior 36-month limit; the earlier version <span class="cite">§14 EPL (pre-2022)</span> is now superseded. Reapplication rules were also clarified at that time.</p>
+              <p>To qualify, the specialist must receive a salary exceeding <strong>€5,800/month</strong> <span class="cite">§13.1 EPL</span> and hold a technical, managerial, or expert role not ordinarily available in the Finnish labour market. The Tax Administration bulletin <span class="cite">VH/2024/00156</span> details the employer documentation required.</p>
+              <p>Applications must be filed within 90 days of the first working day <span class="cite">§15 EPL</span>. Late submissions are rejected, as confirmed in <span class="cite">KHO 2021:88</span>.</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="sources-heading">Sources</div>
+            <div class="sources-list">
+              <div class="source-item">
+                <div class="source-type-dot finlex"></div>
+                <span class="source-id">§13 EPL</span>
+                <span class="source-label">Laki ulkomailta tulevan palkansaajan lähdeverosta</span>
+                <span class="source-tag statute">Statute</span>
+              </div>
+              <div class="source-item">
+                <div class="source-type-dot finlex"></div>
+                <span class="source-id">§14a EPL</span>
+                <span class="source-label">Amendment 2022 — extended validity to 48 months</span>
+                <span class="source-tag statute">Statute</span>
+              </div>
+              <div class="source-item">
+                <div class="source-type-dot repealed"></div>
+                <span class="source-id">§14 EPL</span>
+                <span class="source-label">36-month limit — superseded Jan 2022</span>
+                <span class="source-tag repealed">Repealed</span>
+              </div>
+              <div class="source-item">
+                <div class="source-type-dot vh"></div>
+                <span class="source-id">VH/2024/00156</span>
+                <span class="source-label">Avainhenkilöverotus — soveltamisohje 2024</span>
+                <span class="source-tag guidance">Guidance</span>
+              </div>
+              <div class="source-item">
+                <div class="source-type-dot court"></div>
+                <span class="source-id">KHO 2021:88</span>
+                <span class="source-label">Late application rejection — binding precedent</span>
+                <span class="source-tag court">KHO</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- /workspace -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div class="cy-tooltip" id="tooltip"></div>
+
+<script>
+// ── Graph data ─────────────────────────────────────────────────────
+const SAMPLE_GRAPH = {
+  nodes: [
+    { id:'EPL_13',      type:'ARTICLE',    label:'§13 EPL',       superseded:false, desc:'Flat 32% source-tax rate for key personnel' },
+    { id:'EPL_14',      type:'ARTICLE',    label:'§14 EPL',       superseded:true,  desc:'36-month validity (pre-2022, superseded)' },
+    { id:'EPL_14a',     type:'ARTICLE',    label:'§14a EPL',      superseded:false, desc:'48-month validity — 2022 amendment' },
+    { id:'EPL_15',      type:'ARTICLE',    label:'§15 EPL',       superseded:false, desc:'90-day application deadline' },
+    { id:'VH_2024_156', type:'GUIDANCE_S', label:'VH/2024/00156', superseded:false, desc:'Employer documentation requirements' },
+    { id:'KHO_2021_88', type:'COURT_CASE', label:'KHO 2021:88',   superseded:false, desc:'Late applications are rejected — precedent' },
+  ],
+  edges: [
+    { source:'EPL_14a',     target:'EPL_14',   relation:'amends' },
+    { source:'VH_2024_156', target:'EPL_13',   relation:'interpreted_by' },
+    { source:'VH_2024_156', target:'EPL_14a',  relation:'cites' },
+    { source:'KHO_2021_88', target:'EPL_15',   relation:'overrides' },
+    { source:'EPL_13',      target:'EPL_15',   relation:'references' },
+  ]
+};
+
+const NODE_COLORS = {
+  ARTICLE:    { bg:'oklch(62% 0.16 248)',  border:'oklch(54% 0.18 248)',  text:'#fff' },
+  CLAUSE:     { bg:'oklch(62% 0.16 248)',  border:'oklch(54% 0.18 248)',  text:'#fff' },
+  GUIDANCE_S: { bg:'oklch(62% 0.14 148)',  border:'oklch(55% 0.16 148)',  text:'#fff' },
+  GUIDANCE:   { bg:'oklch(62% 0.14 148)',  border:'oklch(55% 0.16 148)',  text:'#fff' },
+  COURT_CASE: { bg:'oklch(68% 0.15 52)',   border:'oklch(59% 0.17 52)',   text:'#fff' },
+};
+const SUPERSEDED = { bg:'oklch(22% 0.009 272)', border:'oklch(28% 0.011 272)', text:'oklch(44% 0.012 272)' };
+
+const EDGE_COLORS = {
+  amends:         'oklch(64% 0.18 282)',
+  repeals:        'oklch(60% 0.18 22)',
+  references:     'oklch(44% 0.012 272)',
+  interpreted_by: 'oklch(62% 0.14 148)',
+  cites:          'oklch(56% 0.13 200)',
+  overrides:      'oklch(68% 0.15 52)',
+};
+
+let cy = null;
+
+function initGraph(graphData) {
+  const container = document.getElementById('cy');
+  document.getElementById('graph-empty').style.display = 'none';
+
+  const elements = [
+    ...graphData.nodes.map(n => {
+      const c = n.superseded ? SUPERSEDED : (NODE_COLORS[n.type] || NODE_COLORS.ARTICLE);
+      return { data: { id:n.id, label:n.label, type:n.type, superseded:n.superseded, desc:n.desc, bg:c.bg, border:c.border, textColor:c.text } };
+    }),
+    ...graphData.edges.map((e,i) => ({
+      data: { id:`e${i}`, source:e.source, target:e.target, relation:e.relation, lineColor:EDGE_COLORS[e.relation]||EDGE_COLORS.references }
+    }))
+  ];
+
+  if (cy) cy.destroy();
+  cy = cytoscape({
+    container,
+    elements,
+    layout: { name:'breadthfirst', directed:true, padding:36, spacingFactor:1.5, avoidOverlap:true },
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color':'data(bg)', 'border-color':'data(border)', 'border-width':1.5,
+          'color':'data(textColor)', 'label':'data(label)',
+          'font-family':'"JetBrains Mono", monospace', 'font-size':'10.5px', 'font-weight':'500',
+          'text-valign':'center', 'text-halign':'center',
+          'width':'label', 'height':26, 'padding':'0 11px',
+          'shape':'round-rectangle', 'text-wrap':'none',
+          'transition-property':'opacity, border-width, border-color', 'transition-duration':'0.15s',
+        }
+      },
+      { selector:'node[?superseded]', style:{ 'opacity':0.5, 'border-style':'dashed' } },
+      { selector:'node.highlighted', style:{ 'border-width':2.5, 'border-color':'oklch(64% 0.18 282)', 'z-index':10 } },
+      {
+        selector:'edge',
+        style: {
+          'line-color':'data(lineColor)', 'target-arrow-color':'data(lineColor)',
+          'target-arrow-shape':'triangle', 'arrow-scale':0.65,
+          'width':1.5, 'curve-style':'bezier', 'opacity':0.75,
+          'label':'data(relation)', 'font-family':'"DM Sans",sans-serif', 'font-size':'9px',
+          'color':'oklch(48% 0.01 272)', 'text-opacity':0,
+          'text-background-color':'oklch(13.5% 0.013 272)', 'text-background-opacity':0,
+          'transition-property':'opacity, text-opacity, width', 'transition-duration':'0.15s',
+        }
+      },
+      { selector:'edge.highlighted', style:{ 'opacity':1, 'width':2.5, 'text-opacity':1, 'text-background-opacity':1, 'text-background-padding':'3px', 'z-index':10 } },
+      { selector:'node.faded, edge.faded', style:{ 'opacity':0.1 } },
+    ]
+  });
+
+  const tooltip = document.getElementById('tooltip');
+  const rect = () => container.getBoundingClientRect();
+
+  cy.on('mouseover','node', evt => {
+    const n = evt.target.data(); const p = evt.renderedPosition; const r = rect();
+    tooltip.innerHTML = `<strong>${n.label}</strong><span class="tt-type">${n.type}${n.superseded?' · superseded':''}</span>${n.desc||''}`;
+    tooltip.style.left = (r.left+p.x+14)+'px'; tooltip.style.top = (r.top+p.y-8)+'px';
+    tooltip.classList.add('visible');
+    evt.target.connectedEdges().addClass('highlighted');
+  });
+  cy.on('mouseout','node', () => { tooltip.classList.remove('visible'); cy.edges().removeClass('highlighted'); });
+
+  cy.on('mouseover','edge', evt => {
+    const e = evt.target.data(); const p = evt.renderedPosition; const r = rect();
+    tooltip.innerHTML = `<span class="tt-rel">${e.source.replace(/_/g,' → ').replace('EPL ','§').replace('VH ','VH/')}</span><br><strong style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:oklch(64% 0.18 282)">${e.relation}</strong>`;
+    tooltip.style.left = (r.left+p.x+14)+'px'; tooltip.style.top = (r.top+p.y-8)+'px';
+    tooltip.classList.add('visible');
+  });
+  cy.on('mouseout','edge', () => tooltip.classList.remove('visible'));
+
+  cy.on('tap','node', evt => {
+    cy.elements().removeClass('highlighted faded');
+    const nb = evt.target.closedNeighborhood();
+    nb.addClass('highlighted');
+    cy.elements().not(nb).addClass('faded');
+  });
+  cy.on('tap', evt => { if (evt.target===cy) cy.elements().removeClass('highlighted faded'); });
+
+  // Animate in
+  cy.nodes().forEach((n,i) => {
+    n.style('opacity',0);
+    setTimeout(() => n.animate({ style:{ opacity: n.data('superseded') ? 0.5 : 1 } }, { duration:200, easing:'ease-out' }), i*70);
+  });
+}
+
+function fitGraph() { if (cy) cy.fit(undefined, 36); }
+
+// ── Query ──────────────────────────────────────────────────────────
+function runQuery() {
+  const btn = document.getElementById('ask-btn');
+  const q   = document.getElementById('question-input').value.trim();
+  if (!q) return;
+
+  btn.classList.add('loading');
+  document.getElementById('empty-state').style.display    = 'none';
+  document.getElementById('answer-content').classList.remove('visible');
+  document.getElementById('loading-state').classList.add('visible');
+  document.getElementById('graph-empty').style.display    = 'none';
+  if (cy) { cy.destroy(); cy = null; }
+
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    document.getElementById('loading-state').classList.remove('visible');
+    document.getElementById('answer-content').classList.add('visible');
+    addToRecent(q);
+    initGraph(SAMPLE_GRAPH);
+  }, 1350);
+}
+
+function useExample(el) {
+  document.getElementById('question-input').value = el.textContent.trim();
+  runQuery();
+}
+
+function loadRecent(el, question) {
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('question-input').value = question;
+  runQuery();
+}
+
+// Add to recent list (deduplicated, max 5)
+const recentQueries = [
+  'What withholding tax rate applies to a foreign specialist with key-personnel status, and how long is the tax card valid?',
+  'Mikä on pääomatuloveron enimmäisprosentti 2024?',
+  'Miten ALV käsitellään rakennusurakassa?',
+];
+
+function addToRecent(q) {
+  if (!recentQueries.includes(q)) {
+    recentQueries.unshift(q);
+    if (recentQueries.length > 5) recentQueries.pop();
+    renderRecent();
+  } else {
+    // Move to top
+    const idx = recentQueries.indexOf(q);
+    if (idx > 0) { recentQueries.splice(idx,1); recentQueries.unshift(q); renderRecent(); }
+  }
+}
+
+function renderRecent() {
+  const body = document.getElementById('recent-body');
+  const times = ['now','now','2m','5m','12m'];
+  body.innerHTML = recentQueries.map((q,i) => `
+    <div class="sb-item${i===0?' active':''}" onclick="loadRecent(this, ${JSON.stringify(q)})">
+      <span class="sb-item-icon"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+      <span class="sb-item-text">${q.length > 28 ? q.slice(0,28)+'…' : q}</span>
+      <span class="sb-item-time">${times[i]||'—'}</span>
+    </div>`).join('');
+}
+
+// ── Sidebar collapse ───────────────────────────────────────────────
+function toggleSection(name) {
+  const sec = document.getElementById(`section-${name}`);
+  sec.classList.toggle('collapsed');
+}
+
+function toggleTree(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+// ── Resize handle ──────────────────────────────────────────────────
+(function() {
+  const handle = document.getElementById('resize-handle');
+  const panel  = document.getElementById('graph-panel');
+  let dragging=false, startX=0, startW=0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging=true; startX=e.clientX; startW=panel.offsetWidth;
+    document.body.style.cursor='col-resize'; document.body.style.userSelect='none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.clientX-startX;
+    panel.style.width = Math.max(280, Math.min(startW+dx, panel.parentElement.offsetWidth-280))+'px';
+    if (cy) cy.resize();
+  });
+  document.addEventListener('mouseup', () => {
+    dragging=false; document.body.style.cursor=''; document.body.style.userSelect='';
+  });
+})();
+
+// ── Boot ───────────────────────────────────────────────────────────
+window.addEventListener('load', () => setTimeout(runQuery, 200));
+</script>
+</body>
+</html>
