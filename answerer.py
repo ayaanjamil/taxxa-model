@@ -126,7 +126,7 @@ Rules:
 - Prefer Verohallinto (vero) guidance over finlex amendment history when both cover the same fact.
 - If you cannot find the answer in the provided documents, say so explicitly.
 - Be precise with numbers, dates, and rates — do not round or approximate.
-- Answer in the same language as the question (Finnish or English)."""
+- Answer in the same language as the user's question. If the user explicitly requests a different language (e.g. "answer in Swedish"), use that language instead."""
 
 
 def _plan(question: str) -> list[str]:
