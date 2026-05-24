@@ -114,7 +114,16 @@ Example input: "What is the capital income tax rate (pääomatulovero) above 300
 Example output: {"sub_questions": ["pääomatulo veroprosentti 30000 ylittävä", "pääomatulo korotettu tuloveroprosentti TVL", "pääomatulosta suoritetaan veroa prosenttia"]}
 
 Example input: "Under the Finland-Austria double tax treaty, what withholding rate applies to dividends?"
-Example output: {"sub_questions": ["Itävalta osinko äänimäärä hallitsee 10 prosenttia lähdevero", "Itävalta verosopimus osinko sopimusvaltio asuva yhtiö välittömästi", "Itävalta osinko kokonaismäärästä lähdevero prosenttia 5"]}"""
+Example output: {"sub_questions": ["Itävalta osinko äänimäärä hallitsee 10 prosenttia lähdevero", "Itävalta verosopimus osinko sopimusvaltio asuva yhtiö välittömästi", "Itävalta osinko kokonaismäärästä lähdevero prosenttia 5"]}
+
+Example input: "Under the Finland-Germany tax treaty, what is the withholding rate on dividends?"
+Example output: {"sub_questions": ["Saksa osinko äänimäärä hallitsee prosenttia lähdevero", "Saksa verosopimus osinko sopimusvaltio asuva yhtiö 25 prosenttia", "Saksa osinko kokonaismäärästä lähdevero 15 prosenttia"]}
+
+Example input: "What withholding rate applies to interest under the Finland-USA tax treaty?"
+Example output: {"sub_questions": ["Yhdysvallat korko lähdevero prosenttia verosopimus", "USA korko sopimusvaltio asuva saaja artikla 11", "Amerikan yhdysvallat korko kokonaismäärästä lähdevero"]}
+
+Example input: "How are pensions taxed under the Nordic tax treaty between Finland and Sweden?"
+Example output: {"sub_questions": ["Ruotsi eläke verotus Pohjoismainen verosopimus", "Pohjoismainen verosopimus eläke sopimusvaltio asuva yksityinen", "Ruotsi eläke lähdevero artikla 18 sosiaaliturva"]}"""
 
 
 SYNTHESIS_SYSTEM = """You are a Finnish tax law expert assistant. Answer based ONLY on the provided documents.
@@ -223,7 +232,8 @@ def _local_answer(question: str, top_k: int = 12, use_graph: bool = False) -> tu
         node_lists = [retrieve(sq, top_k=top_k) for sq in all_queries]
 
     merged = _merge_nodes(node_lists)
-    context = format_nodes(merged, max_chars=20000)
+    # 14k: 20k bleeds in noise on Haiku, 12k drops late evidence. Unified with api.py.
+    context = format_nodes(merged, max_chars=14000)
 
     user_prompt = f"Question: {question}\n\nSub-questions researched: {sub_questions}\n\nDocuments:\n{context}"
 
