@@ -66,7 +66,7 @@
 - Retriever A/B switches (`TAXXA_DEDUP_MODE`, `TAXXA_RRF_K`,
   `TAXXA_ENTRY_FRONTIER_MULT`) added as env-var ablation knobs
 
-## Phase 8 — Embedder Swap to BGE-M3 (this session)
+## Phase 8 — Embedder Swap to BGE-M3 (this version)
 - Baseline state: 60% fact coverage, mpnet (2021) was the weakest link.
   Difficulty_4/5 stuck at ~22–25%
 - Swapped `paraphrase-multilingual-mpnet-base-v2` (768-dim) →
