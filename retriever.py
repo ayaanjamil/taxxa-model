@@ -27,7 +27,7 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-DATA_DIR = Path("data")
+DATA_DIR = Path(os.getenv("TAXXA_DATA_DIR", "data"))
 BM25_CACHE = DATA_DIR / "bm25.pkl"
 VOIKKO_CACHE = DATA_DIR / "voikko_cache.json"
 
@@ -39,9 +39,9 @@ GRAPH_PKL = DATA_DIR / _GRAPH_FILE
 # Match embedder.py's registry so index and query encoder are always paired.
 _EMBED_MODELS = {
     "mpnet":  ("sentence-transformers/paraphrase-multilingual-mpnet-base-v2", 256,
-               "data/vectors.npy",       "data/id_map.json"),
+               str(DATA_DIR / "vectors.npy"),       str(DATA_DIR / "id_map.json")),
     "bge-m3": ("BAAI/bge-m3", 512,
-               "data/vectors_bgem3.npy", "data/id_map_bgem3.json"),
+               str(DATA_DIR / "vectors_bgem3.npy"), str(DATA_DIR / "id_map_bgem3.json")),
 }
 _EMBED_KEY = os.getenv("TAXXA_EMBED_MODEL", "mpnet")
 MODEL_NAME, _MAX_SEQ, VECTORS_PATH, ID_MAP_PATH = _EMBED_MODELS[_EMBED_KEY]
@@ -170,7 +170,7 @@ def _load():
 
     if _nodes is None:
         print("Loading nodes...")
-        with open("data/nodes.json", encoding="utf-8") as f:
+        with open(DATA_DIR / "nodes.json", encoding="utf-8") as f:
             node_list = json.load(f)
         _nodes = {n["id"]: n for n in node_list}
         # Build parallel-to-vectors list for BM25 index alignment

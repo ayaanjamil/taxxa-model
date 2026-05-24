@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 import retriever
 from answerer import ANSWER_MODEL, SYNTHESIS_SYSTEM, _get_client, _plan
-from retriever import _load, _load_graph, format_nodes, retrieve, retrieve_with_graph
+from retriever import DATA_DIR, _load, _load_graph, format_nodes, retrieve, retrieve_with_graph
 
 
 def _all_nodes() -> dict:
@@ -43,7 +43,7 @@ _parent_nodes: dict[str, dict] = {}
 def _load_parent_nodes() -> None:
     """Cache parent_nodes.json so /corpus/stats is O(1)."""
     global _parent_nodes
-    path = Path("data/parent_nodes.json")
+    path = DATA_DIR / "parent_nodes.json"
     if not path.exists():
         _parent_nodes = {}
         return
@@ -419,7 +419,7 @@ def _bucket_color(pct: float) -> str:
 @app.get("/eval/latest")
 def eval_latest() -> dict:
     """Read the newest data/eval_runs/*_graph.json and aggregate by tier."""
-    files = sorted(glob.glob("data/eval_runs/*_graph.json"))
+    files = sorted(glob.glob(str(DATA_DIR / "eval_runs" / "*_graph.json")))
     if not files:
         return {"available": False}
     latest = files[-1]
