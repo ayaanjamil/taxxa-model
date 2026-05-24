@@ -171,7 +171,15 @@ def _to_source(gn: dict, node: dict, chunks_for_parent: list[dict]) -> dict:
         "dotType": dot,
         "tag": tag,
         "tagLabel": tag_label,
-        "chunks": [{"id": c["id"], "label": _chunk_label(c)} for c in chunks_for_parent],
+        "chunks": [
+            {
+                "id": c["id"],
+                "label": _chunk_label(c),
+                "score": c.get("_retrieval_score"),
+                "rank": c.get("_retrieval_rank"),
+            }
+            for c in chunks_for_parent
+        ],
         "parentId": gn["id"],
         "url": _source_url(node),
     }
@@ -201,34 +209,57 @@ async def _stream(req: AskRequest, request: Request) -> AsyncGenerator[str, None
             return False
 
     # --- PLAN
+    t_plan_start = time.perf_counter()
     sub_questions = _plan(req.question)
-    yield sse("plan", {"sub_questions": sub_questions})
+    plan_ms = int((time.perf_counter() - t_plan_start) * 1000)
+    yield sse("plan", {"sub_questions": sub_questions, "elapsed_ms": plan_ms})
 
     # --- RETRIEVE (entry chunks + graph traversal log)
-    # Emit a `sub_done` event after each sub-question so the frontend can
-    # tick off the planner steps as they complete.
+    # Per-sub-question entry events let the frontend color graph nodes by
+    # which sub-question retrieved them — directly visualizes the planner's
+    # decomposition. Graph-walk endpoints (added below) get sub_idx=null.
+    t_retrieve_start = time.perf_counter()
     all_chunks: list[dict] = []
+    # Track which sub-q first retrieved each parent_id (lowest index wins).
+    parent_sub_idx: dict[str, int] = {}
+    # Track each chunk's source sub-q for downstream score / score-table needs.
     traversal_log: list[dict] = []
     queries = sub_questions or [req.question]
     for idx, sq in enumerate(queries):
         if await disconnected():
             return
+        t_sq = time.perf_counter()
         if req.use_graph:
             chunks, hops = retrieve_with_graph(sq, top_k=req.top_k)
             traversal_log.extend(hops)
         else:
             chunks = retrieve(sq, top_k=req.top_k)
         all_chunks.extend(chunks)
-        yield sse("sub_done", {"index": idx, "hits": len(chunks)})
 
-    deduped = _dedupe_by_parent(all_chunks)
-    entry_nodes = [_to_graph_node(c) for c in deduped]
-    yield sse("entry", {"nodes": entry_nodes})
+        # Tag entry nodes with sub_idx. Dedupe by parent within this sub-q so
+        # the frontend doesn't get the same node twice in one batch. A parent
+        # already claimed by an earlier sub-q stays with the earlier sub-q.
+        sq_nodes: list[dict] = []
+        seen_in_sq: set[str] = set()
+        for c in chunks:
+            pid = c.get("parent_id") or c["id"]
+            if pid in seen_in_sq or pid in parent_sub_idx:
+                continue
+            seen_in_sq.add(pid)
+            parent_sub_idx[pid] = idx
+            gn = _to_graph_node(c)
+            gn["subIdx"] = idx
+            sq_nodes.append(gn)
+        if sq_nodes:
+            yield sse("entry", {"nodes": sq_nodes, "sub_idx": idx})
+        yield sse("sub_done", {"index": idx, "hits": len(chunks), "elapsed_ms": int((time.perf_counter() - t_sq) * 1000)})
+    retrieve_ms = int((time.perf_counter() - t_retrieve_start) * 1000)
 
     # --- HOPS (paced) — only emit hops whose endpoints we can shape into graph nodes
     # Cap the traversal so the demo stays watchable (--reload runs can have 200+ hops).
+    t_hops_start = time.perf_counter()
     capped_log = traversal_log[: req.max_hops]
-    known_parents = {n["id"] for n in entry_nodes}
+    known_parents = set(parent_sub_idx.keys())
     for h in capped_log:
         if await disconnected():
             return
@@ -243,11 +274,16 @@ async def _stream(req: AskRequest, request: Request) -> AsyncGenerator[str, None
             )
             if chunk is not None:
                 node_payload = _to_graph_node(chunk)
+                # Graph-walk endpoints aren't from any sub-question — null sub_idx
+                # so the frontend renders them with a neutral border.
+                node_payload["subIdx"] = None
                 known_parents.add(endpoint)
-                yield sse("entry", {"nodes": [node_payload]})
+                yield sse("entry", {"nodes": [node_payload], "sub_idx": None})
 
         yield sse("hop", {"from": h["from"], "to": h["to"], "relation": h["relation"]})
         await asyncio.sleep(req.hop_delay_ms / 1000)
+    hops_ms = int((time.perf_counter() - t_hops_start) * 1000)
+    deduped = _dedupe_by_parent(all_chunks)
 
     # --- SOURCES
     # Bucket every chunk in the retrieval context by its parent so the frontend
@@ -275,12 +311,13 @@ async def _stream(req: AskRequest, request: Request) -> AsyncGenerator[str, None
         {
             "sources": sources,
             "hops": len(capped_log),
-            "nodes": len(entry_nodes),
+            "nodes": len(known_parents),
             "time_ms": int((time.perf_counter() - t0) * 1000),
         },
     )
 
     # --- SYNTHESIS (stream tokens)
+    t_synth_start = time.perf_counter()
     context = format_nodes(all_chunks, max_chars=14000)  # unified with answerer.py
     user_prompt = (
         f"Question: {req.question}\n\n"
@@ -317,7 +354,19 @@ async def _stream(req: AskRequest, request: Request) -> AsyncGenerator[str, None
         with contextlib.suppress(Exception):
             stream.close()
 
-    yield sse("done", {"time_ms": int((time.perf_counter() - t0) * 1000)})
+    synth_ms = int((time.perf_counter() - t_synth_start) * 1000)
+    yield sse(
+        "done",
+        {
+            "time_ms": int((time.perf_counter() - t0) * 1000),
+            "phase_ms": {
+                "plan": plan_ms,
+                "retrieve": retrieve_ms,
+                "hops": hops_ms,
+                "synth": synth_ms,
+            },
+        },
+    )
 
 
 @app.post("/ask")

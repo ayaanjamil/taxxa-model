@@ -322,7 +322,7 @@ def retrieve(
     from collections import Counter
     out: list[dict] = []
     parent_count: Counter[str] = Counter()
-    for nid, _score in ranked:
+    for nid, score in ranked:
         node = _nodes.get(nid)
         if not node:
             continue
@@ -331,7 +331,10 @@ def retrieve(
         if parent_count[parent] >= max_per_parent:
             continue
         parent_count[parent] += 1
-        out.append(node)
+        # Shallow copy + attach retrieval metadata. Avoids mutating the shared
+        # _nodes dict; callers that want the metadata read _retrieval_score /
+        # _retrieval_rank, callers that don't simply ignore them.
+        out.append({**node, "_retrieval_score": float(score), "_retrieval_rank": len(out) + 1})
         if len(out) >= top_k:
             break
     return out
