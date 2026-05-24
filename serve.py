@@ -25,6 +25,7 @@ image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("libvoikko1", "voikko-fi")
     .pip_install_from_requirements("requirements.txt")
+    .add_local_python_source("api", "retriever", "answerer", "embedder")
 )
 
 app = modal.App(APP_NAME, image=image)
