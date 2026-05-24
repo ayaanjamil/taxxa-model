@@ -19,11 +19,20 @@ from pathlib import Path
 import numpy as np
 
 NODES_FILE = Path("data/nodes.json")
-VECTORS_FILE = Path("data/vectors.npy")
-ID_MAP_FILE = Path("data/id_map.json")
 
-# Handles Finnish morphology far better than English-only models
-MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+# Two supported embedders. Selectable via env or --model:
+#   mpnet (default, legacy 768-dim) | bge-m3 (1024-dim, much stronger on Finnish)
+MODELS = {
+    "mpnet":  ("sentence-transformers/paraphrase-multilingual-mpnet-base-v2", 256,
+               "data/vectors.npy",        "data/id_map.json"),
+    "bge-m3": ("BAAI/bge-m3", 512,
+               "data/vectors_bgem3.npy",  "data/id_map_bgem3.json"),
+}
+
+MODEL_KEY_DEFAULT = os.getenv("TAXXA_EMBED_MODEL", "mpnet")
+MODEL_NAME, MAX_SEQ_LENGTH, VECTORS_FILE, ID_MAP_FILE = MODELS[MODEL_KEY_DEFAULT]
+VECTORS_FILE = Path(VECTORS_FILE)
+ID_MAP_FILE = Path(ID_MAP_FILE)
 
 
 def load_nodes(sample: int | None = None) -> list[dict]:
@@ -39,9 +48,7 @@ def embed_nodes(nodes: list[dict], batch_size: int = 64) -> np.ndarray:
 
     print(f"Loading model: {MODEL_NAME}")
     model = SentenceTransformer(MODEL_NAME)
-    # 256 covers ~95% of our 800-char chunks without truncation. Attention is
-    # quadratic in sequence length, so 256 is ~4x faster than 512 on MPS.
-    model.max_seq_length = 256
+    model.max_seq_length = MAX_SEQ_LENGTH
 
     # Each node is already chunked (~800 chars) by parser.chunk_text — embed full chunk.
     # Prefix with title so the embedding carries document-level context.

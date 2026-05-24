@@ -160,6 +160,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None, help="Reproducible --sample selection")
+    parser.add_argument("--ids", type=str, default=None,
+                        help="Comma-separated question IDs to run (overrides --sample)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--tier", type=str, default=None)
     parser.add_argument("--verbose", action="store_true")
@@ -176,7 +178,13 @@ def main():
     client = OpenAI(api_key=api_key or "dry-run", base_url=OPENROUTER_BASE)
 
     questions = load_questions(tier=args.tier)
-    if args.sample:
+    if args.ids:
+        want = set(s.strip() for s in args.ids.split(",") if s.strip())
+        questions = [q for q in questions if q["id"] in want]
+        missing = want - {q["id"] for q in questions}
+        if missing:
+            print(f"WARNING: ids not found: {sorted(missing)}", file=sys.stderr)
+    elif args.sample:
         if args.seed is not None:
             random.seed(args.seed)
         questions = random.sample(questions, min(args.sample, len(questions)))

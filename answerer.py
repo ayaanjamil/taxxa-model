@@ -233,7 +233,7 @@ def _local_answer(question: str, top_k: int = 12, use_graph: bool = False) -> tu
 
     merged = _merge_nodes(node_lists)
     # 14k: 20k bleeds in noise on Haiku, 12k drops late evidence. Unified with api.py.
-    context = format_nodes(merged, max_chars=14000)
+    context = format_nodes(merged, max_chars=int(os.getenv("TAXXA_CTX_CHARS", "18000")))
 
     user_prompt = f"Question: {question}\n\nSub-questions researched: {sub_questions}\n\nDocuments:\n{context}"
 

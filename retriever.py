@@ -36,7 +36,18 @@ _GRAPH_VERSION = os.getenv("TAXXA_GRAPH_VERSION", "v1")
 _GRAPH_FILE = {"v1": "graph.pkl", "v2": "graph_v2.pkl"}.get(_GRAPH_VERSION, "graph.pkl")
 GRAPH_PKL = DATA_DIR / _GRAPH_FILE
 
-MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+# Match embedder.py's registry so index and query encoder are always paired.
+_EMBED_MODELS = {
+    "mpnet":  ("sentence-transformers/paraphrase-multilingual-mpnet-base-v2", 256,
+               "data/vectors.npy",       "data/id_map.json"),
+    "bge-m3": ("BAAI/bge-m3", 512,
+               "data/vectors_bgem3.npy", "data/id_map_bgem3.json"),
+}
+_EMBED_KEY = os.getenv("TAXXA_EMBED_MODEL", "mpnet")
+MODEL_NAME, _MAX_SEQ, VECTORS_PATH, ID_MAP_PATH = _EMBED_MODELS[_EMBED_KEY]
+# Env-var overrides (handy for ablations without touching the registry)
+VECTORS_PATH = os.getenv("TAXXA_VECTORS_FILE", VECTORS_PATH)
+ID_MAP_PATH  = os.getenv("TAXXA_ID_MAP_FILE", ID_MAP_PATH)
 
 # Retrieval-tuning A/B switches. Read once at import; eval scripts set them in env.
 # DEDUP_MODE: "post" (today, dedup AFTER rank) | "pre" (dedup before RRF)
@@ -138,16 +149,21 @@ def _load():
     global _section_index, _bm25
 
     if _model is None:
-        print("Loading embedding model...")
-        _model = SentenceTransformer(MODEL_NAME)
-        _model.max_seq_length = 256  # match embedder.py
+        # MPS gives ~3-5x speedup on Apple Silicon vs CPU for BGE-M3 query encoding;
+        # falls back to CPU silently elsewhere.
+        import torch
+        device = "mps" if torch.backends.mps.is_available() else (
+            "cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Loading embedding model: {MODEL_NAME} (device={device})")
+        _model = SentenceTransformer(MODEL_NAME, device=device)
+        _model.max_seq_length = _MAX_SEQ
 
     if _vectors is None:
-        print("Loading vectors...")
-        _vectors = np.load("data/vectors.npy")
+        print(f"Loading vectors from {VECTORS_PATH}...")
+        _vectors = np.load(VECTORS_PATH)
 
     if _id_map is None:
-        with open("data/id_map.json", encoding="utf-8") as f:
+        with open(ID_MAP_PATH, encoding="utf-8") as f:
             raw = json.load(f)
         _id_map = {int(k): v for k, v in raw.items()}
         _nid_to_idx = {v: int(k) for k, v in raw.items()}
