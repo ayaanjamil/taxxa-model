@@ -58,6 +58,11 @@ async def lifespan(app: FastAPI):
     _load()
     _load_graph()
     _load_parent_nodes()
+    # Fail fast if the embedding model didn't actually populate the singleton —
+    # otherwise the first /ask request silently pays 2-3s to load it.
+    assert retriever._model is not None, "embedding model failed to load at startup"
+    assert retriever._vectors is not None, "vectors failed to load at startup"
+    assert retriever._bm25 is not None, "BM25 failed to load at startup"
     print(f"Ready. ({len(_parent_nodes)} parents indexed)")
     yield
 
@@ -276,7 +281,7 @@ async def _stream(req: AskRequest, request: Request) -> AsyncGenerator[str, None
     )
 
     # --- SYNTHESIS (stream tokens)
-    context = format_nodes(all_chunks, max_chars=12000)
+    context = format_nodes(all_chunks, max_chars=14000)  # unified with answerer.py
     user_prompt = (
         f"Question: {req.question}\n\n"
         f"Sub-questions researched: {sub_questions}\n\n"

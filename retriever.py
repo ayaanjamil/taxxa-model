@@ -16,6 +16,7 @@ chunk cites "§ 4", we surface other chunks of that same statute's §4.
 """
 
 import json
+import os
 import pickle
 import re
 from pathlib import Path
@@ -29,9 +30,19 @@ from sentence_transformers import SentenceTransformer
 DATA_DIR = Path("data")
 BM25_CACHE = DATA_DIR / "bm25.pkl"
 VOIKKO_CACHE = DATA_DIR / "voikko_cache.json"
-GRAPH_PKL = DATA_DIR / "graph.pkl"
+
+# GRAPH_VERSION: "v1" (deterministic only, default) | "v2" (with LLM-typed edges)
+_GRAPH_VERSION = os.getenv("TAXXA_GRAPH_VERSION", "v1")
+_GRAPH_FILE = {"v1": "graph.pkl", "v2": "graph_v2.pkl"}.get(_GRAPH_VERSION, "graph.pkl")
+GRAPH_PKL = DATA_DIR / _GRAPH_FILE
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+
+# Retrieval-tuning A/B switches. Read once at import; eval scripts set them in env.
+# DEDUP_MODE: "post" (today, dedup AFTER rank) | "pre" (dedup before RRF)
+# RRF_K: 60 (today's hard-default) | 100 (softer penalty on mid-rank candidates)
+DEDUP_MODE_DEFAULT = os.getenv("TAXXA_DEDUP_MODE", "post")
+RRF_K_DEFAULT = int(os.getenv("TAXXA_RRF_K", "60"))
 
 # Finnish legal acronyms — expanded into queries before embedding/tokenizing
 ACRONYMS = {
@@ -188,27 +199,76 @@ def _rrf_merge(rank_lists: list[dict[int, int]], k: int = 60) -> dict[int, float
     return scores
 
 
-def retrieve(query: str, top_k: int = 10, candidate_pool: int = 50) -> list[dict]:
+def _parent_of(nid: str) -> str:
+    n = (_nodes or {}).get(nid)
+    if n and n.get("parent_id"):
+        return n["parent_id"]
+    return nid.rsplit("#chunk", 1)[0] if "#chunk" in nid else nid
+
+
+def _predupe_ranked_idxs(idxs: np.ndarray, scores: np.ndarray) -> np.ndarray:
+    """Keep, for each parent, only the highest-scoring chunk index from a ranked list.
+
+    Order in `idxs` is already by descending score, so the first time we see a
+    parent is its best chunk. Returns idxs filtered in-place; preserves order.
+    """
+    seen: set[str] = set()
+    keep: list[int] = []
+    for idx in idxs:
+        pid = _parent_of(_id_map[int(idx)])
+        if pid in seen:
+            continue
+        seen.add(pid)
+        keep.append(int(idx))
+    return np.array(keep, dtype=idxs.dtype) if keep else idxs
+
+
+def retrieve(
+    query: str,
+    top_k: int = 10,
+    candidate_pool: int = 50,
+    dedup_mode: str | None = None,
+    rrf_k: int | None = None,
+) -> list[dict]:
     """Hybrid retrieve: vector + BM25 → RRF merge → §-ref expansion → ranked top-k."""
     _load()
 
+    if dedup_mode is None:
+        dedup_mode = DEDUP_MODE_DEFAULT
+    if rrf_k is None:
+        rrf_k = RRF_K_DEFAULT
+
     expanded = expand_query(query)
+
+    # When dedup_mode="pre" we collect a wider candidate pool from each list,
+    # then collapse to top-N unique parents BEFORE RRF — so two chunks of the
+    # same parent don't both eat slots in the merge.
+    if dedup_mode == "pre":
+        wide_pool = max(candidate_pool * 3, candidate_pool)
+        target_unique = min(candidate_pool, 40)
+    else:
+        wide_pool = candidate_pool
+        target_unique = candidate_pool
 
     # --- Vector scores
     q_vec = _model.encode(expanded, normalize_embeddings=True)
     vec_scores = _vectors @ q_vec  # (N,)
-    vec_top = np.argpartition(-vec_scores, candidate_pool)[:candidate_pool]
+    vec_top = np.argpartition(-vec_scores, wide_pool)[:wide_pool]
     vec_top = vec_top[np.argsort(-vec_scores[vec_top])]
+    if dedup_mode == "pre":
+        vec_top = _predupe_ranked_idxs(vec_top, vec_scores)[:target_unique]
     vec_rank = {int(idx): rank for rank, idx in enumerate(vec_top)}
 
     # --- BM25 scores
     bm25_scores = _bm25.get_scores(_tokenize_fi(expanded))
-    bm25_top = np.argpartition(-bm25_scores, candidate_pool)[:candidate_pool]
+    bm25_top = np.argpartition(-bm25_scores, wide_pool)[:wide_pool]
     bm25_top = bm25_top[np.argsort(-bm25_scores[bm25_top])]
+    if dedup_mode == "pre":
+        bm25_top = _predupe_ranked_idxs(bm25_top, bm25_scores)[:target_unique]
     bm25_rank = {int(idx): rank for rank, idx in enumerate(bm25_top)}
 
     # --- RRF merge
-    fused = _rrf_merge([vec_rank, bm25_rank])
+    fused = _rrf_merge([vec_rank, bm25_rank], k=rrf_k)
 
     # Vero authority boost: prefer current Verohallinto guidance
     # Treaty boost: bilateral tax treaties (Tuloverosopimukset) are primary law —
@@ -288,7 +348,7 @@ def _load_graph() -> None:
         _graph = nx.DiGraph()
         _parent_to_chunks = {}
         return
-    print("Loading graph...")
+    print(f"Loading graph ({_GRAPH_VERSION}: {GRAPH_PKL.name})...")
     with open(GRAPH_PKL, "rb") as f:
         _graph = pickle.load(f)
     _parent_to_chunks = {}
@@ -317,8 +377,15 @@ def retrieve_with_graph(
     """
     _load_graph()
 
-    # Get entry chunks at higher k so we have headroom after graph expansion
-    entry_chunks = retrieve(query, top_k=top_k * 2, candidate_pool=candidate_pool)
+    # Get entry chunks at higher k so we have headroom after graph expansion.
+    # Widened from top_k*2 to top_k*3 — the previous 20-chunk frontier was too
+    # narrow on hard tier (right parent often sat at rank 21-30).
+    entry_frontier_mult = int(os.getenv("TAXXA_ENTRY_FRONTIER_MULT", "3"))
+    entry_chunks = retrieve(
+        query,
+        top_k=top_k * entry_frontier_mult,
+        candidate_pool=candidate_pool,
+    )
     entry_parents: list[str] = []
     seen_parents: set[str] = set()
     # Map entry parent → ordered list of chunks BM25/vector actually matched

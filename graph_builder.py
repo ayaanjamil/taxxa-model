@@ -26,8 +26,11 @@ import networkx as nx
 DATA_DIR = Path("data")
 NODES_PATH = DATA_DIR / "nodes.json"
 GRAPH_PKL = DATA_DIR / "graph.pkl"
+GRAPH_V2_PKL = DATA_DIR / "graph_v2.pkl"
 EDGES_JSON = DATA_DIR / "graph_edges.json"
 PARENTS_JSON = DATA_DIR / "parent_nodes.json"
+EDGE_EXTRACTIONS = DATA_DIR / "edge_extractions.jsonl"
+LLM_CONF_THRESHOLD = 0.7  # confidence floor for accepting an LLM relation re-typing
 
 # Match "12 §" or "§ 12" or "12 a §" — same as retriever
 _SEC_RE = re.compile(r"(\d+[a-zA-Z]?)\s*§|§\s*(\d+[a-zA-Z]?)")
@@ -204,6 +207,59 @@ def assemble_graph(parents: dict[str, dict], edges: list[dict]) -> nx.DiGraph:
     return G
 
 
+def build_v2(base_graph: nx.DiGraph) -> tuple[nx.DiGraph, dict[str, int]]:
+    """Layer LLM-extracted relations onto the v1 graph.
+
+    For each (from, to) pair in edge_extractions.jsonl:
+      - relation == "none" with confidence >= threshold  → remove the edge entirely
+        (the deterministic §-ref was incidental, not substantive)
+      - relation in {"interpreted_by", "clarified_by", "overrides"} → re-type the
+        existing "cites" edge with the more specific relation, and overwrite confidence
+      - relation == "references" → keep the "cites" edge but flag confidence lower
+        (it's a real mention, but not interpretive — useful for graph viz, weak for retrieval)
+      - confidence < threshold → leave the edge as it was in v1 (no change)
+
+    Returns (v2_graph, stats).
+    """
+    G = base_graph.copy()
+    stats: dict[str, int] = {"dropped_none": 0, "retyped": 0, "kept_references": 0, "low_conf_skipped": 0, "missing_edge": 0}
+
+    if not EDGE_EXTRACTIONS.exists():
+        print(f"WARNING: {EDGE_EXTRACTIONS} not found — v2 == v1")
+        return G, stats
+
+    with open(EDGE_EXTRACTIONS, encoding="utf-8") as f:
+        for line in f:
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            u, v = row.get("from"), row.get("to")
+            rel = row.get("relation")
+            conf = float(row.get("confidence") or 0.0)
+            if not (u and v and rel):
+                continue
+            if not G.has_edge(u, v):
+                stats["missing_edge"] += 1
+                continue
+            if conf < LLM_CONF_THRESHOLD:
+                stats["low_conf_skipped"] += 1
+                continue
+            if rel == "none":
+                G.remove_edge(u, v)
+                stats["dropped_none"] += 1
+            elif rel in {"interpreted_by", "clarified_by", "overrides"}:
+                G[u][v]["relation"] = rel
+                G[u][v]["confidence"] = conf
+                G[u][v]["llm_typed"] = True
+                stats["retyped"] += 1
+            elif rel == "references":
+                G[u][v]["confidence"] = min(G[u][v].get("confidence", 1.0), 0.6)
+                G[u][v]["llm_typed"] = True
+                stats["kept_references"] += 1
+    return G, stats
+
+
 def main(stats_only: bool = False) -> None:
     print(f"Loading {NODES_PATH}...")
     with open(NODES_PATH, encoding="utf-8") as f:
@@ -242,6 +298,18 @@ def main(stats_only: bool = False) -> None:
     with open(EDGES_JSON, "w", encoding="utf-8") as f:
         json.dump(edges, f, ensure_ascii=False, indent=2)
 
+    # --- v2: layer LLM-extracted relations on top
+    if EDGE_EXTRACTIONS.exists():
+        print(f"Building v2 from {EDGE_EXTRACTIONS}...")
+        G_v2, v2_stats = build_v2(G)
+        print(f"  v2 stats: {v2_stats}")
+        print(f"  v2 graph: {G_v2.number_of_nodes()} nodes, {G_v2.number_of_edges()} edges")
+        print(f"Saving {GRAPH_V2_PKL}...")
+        with open(GRAPH_V2_PKL, "wb") as f:
+            pickle.dump(G_v2, f, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        print(f"  (no {EDGE_EXTRACTIONS} — skipping v2)")
+
     print(f"Saving {PARENTS_JSON}...")
     # Strip chunk_ids before saving — they're huge and the retriever rebuilds the mapping
     parents_slim = {
@@ -254,6 +322,24 @@ def main(stats_only: bool = False) -> None:
     print("Done.")
 
 
+def main_v2_only() -> None:
+    """Layer LLM edges onto the existing graph.pkl WITHOUT rebuilding from nodes.json."""
+    print(f"Loading existing {GRAPH_PKL}...")
+    with open(GRAPH_PKL, "rb") as f:
+        G = pickle.load(f)
+    print(f"  v1: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    G_v2, stats = build_v2(G)
+    print(f"  stats: {stats}")
+    print(f"  v2: {G_v2.number_of_nodes()} nodes, {G_v2.number_of_edges()} edges")
+    print(f"Saving {GRAPH_V2_PKL}...")
+    with open(GRAPH_V2_PKL, "wb") as f:
+        pickle.dump(G_v2, f, protocol=pickle.HIGHEST_PROTOCOL)
+    print("Done.")
+
+
 if __name__ == "__main__":
     import sys
-    main(stats_only="--stats" in sys.argv)
+    if "--v2-only" in sys.argv:
+        main_v2_only()
+    else:
+        main(stats_only="--stats" in sys.argv)
